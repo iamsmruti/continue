@@ -1,0 +1,65 @@
+name: Build and Upload VSIX
+
+on:
+  pull_request:
+    branches:
+      - "**"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js from .nvmrc
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Build packages (Unix)
+        run: ./scripts/build-packages.sh
+
+      - name: Install extension dependencies
+        run: |
+          cd extensions/vscode
+          npm ci
+      
+      - name: Run Pre-package
+        run: |
+          cd extensions/vscode
+          npm run prepackage
+
+      - name: Package the extension
+        run: |
+          cd extensions/vscode
+          npx vsce package --no-dependencies
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-package
+          path: extensions/vscode/*.vsix
+
+  UploadToS3:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix-package
+          path: ./vsix
+
+      - name: Upload to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
+        run: |
+          VSIX_FILE=$(find ./vsix -name "*.vsix" | head -n 1)
+          echo "Uploading $VSIX_FILE to ${S3_BUCKET_NAME}"
+          aws s3 cp "$VSIX_FILE" "s3://${S3_BUCKET_NAME}/"
