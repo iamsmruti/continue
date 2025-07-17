@@ -120,22 +120,40 @@ function ParallelListeners() {
   // Load config from the IDE
   useEffect(() => {
     void initialLoadAuthAndConfig(true);
-    const interval = setInterval(() => {
+    let mounted = true;
+    
+    const loadInitialData = async () => {
+      if (!mounted) return;
+      
+      // Get the current workspace directory from the IDE
+      let workspaceDirectory: string | undefined;
+      try {
+        const response = await ideMessenger.request("getWorkspaceDirs", undefined);
+        if (Array.isArray(response) && response.length > 0) {
+          workspaceDirectory = response[0];
+        }
+      } catch (e) {
+        console.warn("Failed to get workspace directory", e);
+      }
+      
       if (hasDoneInitialConfigLoad.current) {
         // Init to run on initial config load
         ideMessenger.post("docs/initStatuses", undefined);
         void dispatch(updateFileSymbolsFromHistory());
-        void dispatch(refreshSessionMetadata({}));
-
-        // This triggers sending pending status to the GUI for relevant docs indexes
-        clearInterval(interval);
+        void dispatch(refreshSessionMetadata({ workspaceDirectory }));
       } else {
-        void initialLoadAuthAndConfig(true);
+        // If config isn't loaded yet, try again after a delay
+        setTimeout(loadInitialData, 2000);
       }
-    }, 2_000);
-
-    return () => clearInterval(interval);
-  }, [hasDoneInitialConfigLoad, initialLoadAuthAndConfig, ideMessenger]);
+    };
+    
+    // Initial load
+    loadInitialData();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [hasDoneInitialConfigLoad, initialLoadAuthAndConfig, ideMessenger, dispatch]);
 
   useWebviewListener(
     "configUpdate",

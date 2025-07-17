@@ -32,7 +32,16 @@ class HistoryManager {
     let sessions = safeParseArray<SessionMetadata>(content) ?? [];
     sessions = sessions.filter((session: any) => {
       // Filter out old format
-      return typeof session.session_id !== "string";
+      if (typeof session.session_id === "string") {
+        return false;
+      }
+      
+      // Filter by workspace directory if specified
+      if (options.workspaceDirectory && session.workspaceDirectory !== options.workspaceDirectory) {
+        return false;
+      }
+      
+      return true;
     });
 
     // Apply limit and offset

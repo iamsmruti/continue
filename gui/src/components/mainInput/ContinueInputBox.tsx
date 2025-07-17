@@ -8,7 +8,7 @@ import { ContextItemsPeek } from "./belowMainInput/ContextItemsPeek";
 import { RulesPeek } from "./belowMainInput/RulesPeek";
 import { GradientBorder } from "./GradientBorder";
 import { ToolbarOptions } from "./InputToolbar";
-import { Lump } from "./Lump";
+// import { Lump } from "./Lump";
 import { TipTapEditor } from "./TipTapEditor";
 
 interface ContinueInputBoxProps {
@@ -88,7 +88,7 @@ function ContinueInputBox(props: ContinueInputBoxProps) {
       data-testid={`continue-input-box-${props.inputId}`}
     >
       <div className={`relative flex flex-col px-2`}>
-        {props.isMainInput && <Lump />}
+        {/* {props.isMainInput && <Lump />} */}
         <GradientBorder
           loading={isStreaming && props.isLastUserInput ? 1 : 0}
           borderColor={

@@ -38,7 +38,7 @@ import {
   updateToolCallOutput,
 } from "../../redux/slices/sessionSlice";
 import { streamEditThunk } from "../../redux/thunks/edit";
-import { loadLastSession } from "../../redux/thunks/session";
+import { loadLastSession, refreshSessionMetadata } from "../../redux/thunks/session";
 import { streamResponseThunk } from "../../redux/thunks/streamResponse";
 import { isJetBrains, isMetaEquivalentKeyPressed } from "../../util";
 import { ToolCallDiv } from "./ToolCallDiv";
@@ -94,6 +94,41 @@ export function Chat() {
     (store) => store.config?.config.selectedModelByRole,
   );
   const isStreaming = useAppSelector((state) => state.session.isStreaming);
+  
+  // Track the current workspace directory
+  const [workspaceDirectory, setWorkspaceDirectory] = useState<string | undefined>();
+  
+  // Load the current workspace directory and refresh session metadata when it changes
+  useEffect(() => {
+    let isMounted = true;
+    
+    const loadWorkspaceDirectory = async () => {
+      try {
+        const response = await ideMessenger.request("getWorkspaceDirs", undefined);
+        if (isMounted && Array.isArray(response) && response.length > 0) {
+          const newWorkspaceDirectory = response[0];
+          if (newWorkspaceDirectory !== workspaceDirectory) {
+            setWorkspaceDirectory(newWorkspaceDirectory);
+            // Refresh session metadata with the new workspace directory
+            await dispatch(refreshSessionMetadata({ workspaceDirectory: newWorkspaceDirectory }));
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to get workspace directory", e);
+      }
+    };
+    
+    // Initial load
+    loadWorkspaceDirectory();
+    
+    // Set up a polling mechanism to check for workspace changes
+    const pollInterval = setInterval(loadWorkspaceDirectory, 5000);
+    
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+    };
+  }, [dispatch, ideMessenger, workspaceDirectory]);
   const [stepsOpen] = useState<(boolean | undefined)[]>([]);
   const mainTextInputRef = useRef<HTMLInputElement>(null);
   const stepsDivRef = useRef<HTMLDivElement>(null);

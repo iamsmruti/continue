@@ -34,12 +34,14 @@ export const refreshSessionMetadata = createAsyncThunk<
   {
     offset?: number;
     limit?: number;
+    workspaceDirectory?: string;
   },
   ThunkApiType
->("session/refreshMetadata", async ({ offset, limit }, { dispatch, extra }) => {
+>("session/refreshMetadata", async ({ offset, limit, workspaceDirectory }, { dispatch, extra }) => {
   const result = await extra.ideMessenger.request("history/list", {
     limit,
     offset,
+    workspaceDirectory,
   });
   if (result.status === "error") {
     throw new Error(result.error);
@@ -76,10 +78,11 @@ export const updateSession = createAsyncThunk<void, Session, ThunkApiType>(
       updateSessionMetadata({
         sessionId: session.sessionId,
         title: session.title,
+        workspaceDirectory: session.workspaceDirectory,
       }),
     ); // optimistic session metadata update
     await extra.ideMessenger.request("history/save", session);
-    await dispatch(refreshSessionMetadata({}));
+    await dispatch(refreshSessionMetadata({ workspaceDirectory: session.workspaceDirectory }));
   },
 );
 
@@ -118,20 +121,48 @@ export const loadLastSession = createAsyncThunk<
   ThunkApiType
 >(
   "session/loadLast",
-  async ({ saveCurrentSession }, { extra, dispatch, getState }) => {
+  async ({ saveCurrentSession: shouldSaveCurrentSession }, { extra, dispatch, getState }) => {
     const state = getState();
 
-    if (state.session.id && saveCurrentSession) {
+    // Get the current workspace directory from the IDE
+    let workspaceDirectory: string | undefined;
+    try {
+      const response = await extra.ideMessenger.request("getWorkspaceDirs", undefined);
+      if (Array.isArray(response) && response.length > 0) {
+        workspaceDirectory = response[0];
+      }
+    } catch (e) {
+      console.warn("Failed to get workspace directory", e);
     }
-    const lastSessionId = getState().session.lastSessionId;
 
-    if (!lastSessionId) {
+    // Save current session if needed
+    if (state.session.id && shouldSaveCurrentSession) {
+      await dispatch(
+        saveCurrentSession({
+          openNewSession: false,
+          generateTitle: true,
+        })
+      );
+    }
+
+    // Get the last session ID from the current workspace
+    const metadataResult = await dispatch(
+      refreshSessionMetadata({ 
+        limit: 1, 
+        workspaceDirectory 
+      })
+    );
+    
+    const metadata = metadataResult.payload as SessionMetadata[] | undefined;
+    const lastSession = metadata?.[0];
+    
+    if (lastSession) {
+      const session = await getSession(extra.ideMessenger, lastSession.sessionId);
+      dispatch(newSession(session));
+    } else {
+      // If no sessions found in the current workspace, start a new one
       dispatch(newSession());
-      return;
     }
-
-    const session = await getSession(extra.ideMessenger, lastSessionId);
-    dispatch(newSession(session));
   },
 );
 
@@ -159,6 +190,17 @@ export const saveCurrentSession = createAsyncThunk<
     const state = getState();
     if (state.session.history.length === 0) {
       return;
+    }
+
+    // Get the current workspace directory from the IDE
+    let workspaceDirectory = "";
+    try {
+      const response = await extra.ideMessenger.request("getWorkspaceDirs", undefined);
+      if (Array.isArray(response) && response.length > 0) {
+        workspaceDirectory = response[0];
+      }
+    } catch (e) {
+      console.warn("Failed to get workspace directory", e);
     }
 
     if (openNewSession) {
@@ -213,7 +255,7 @@ export const saveCurrentSession = createAsyncThunk<
     const session: Session = {
       sessionId: state.session.id,
       title,
-      workspaceDirectory: window.workspacePaths?.[0] || "",
+      workspaceDirectory,
       history: state.session.history,
     };
 

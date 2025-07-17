@@ -53,6 +53,7 @@ export enum OnboardingModes {
 export interface ListHistoryOptions {
   offset?: number;
   limit?: number;
+  workspaceDirectory?: string;
 }
 
 export type ToCoreFromIdeOrWebviewProtocol = {
